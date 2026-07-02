@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>창립 기념일 선물 취합</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+<div class="wrap">
+  <header class="page-header">
+    <h1>🎁 창립 기념일 선물 취합</h1>
+    <p>받고 싶은 선물을 자유롭게 제안하거나, 이미 등록된 선물 중 마음에 드는 항목에 투표해 주세요. 한 사람이 여러 항목에 투표할 수 있어요.</p>
+  </header>
+
+  <div class="card">
+    <div class="identity-banner">
+      <span>내 이름: <strong id="whoami">아직 입력 전</strong></span>
+      <button class="btn-ghost" id="editIdentityBtn">이름/부서 수정</button>
+    </div>
+  </div>
+
+  <div class="card" id="identityCard" style="display:none;">
+    <h2>내 정보</h2>
+    <div class="field-row">
+      <div class="field">
+        <label for="identityName">이름</label>
+        <input type="text" id="identityName" placeholder="예: 홍길동" />
+      </div>
+      <div class="field">
+        <label for="identityDept">부서 (선택)</label>
+        <input type="text" id="identityDept" placeholder="예: 개발팀" />
+      </div>
+    </div>
+    <button class="btn-primary" id="saveIdentityBtn">저장</button>
+  </div>
+
+  <div class="card">
+    <h2>새 선물 제안하기</h2>
+    <form id="giftForm">
+      <div class="field">
+        <label for="giftText">원하는 선물</label>
+        <textarea id="giftText" placeholder="예: 무선 이어폰, 커피 쿠폰 세트 등" required></textarea>
+      </div>
+      <button class="btn-primary" type="submit">제안 등록</button>
+    </form>
+  </div>
+
+  <div class="card">
+    <h2>제안 목록 · 투표하기</h2>
+    <ul class="gift-list" id="giftList"></ul>
+    <div class="empty-state" id="emptyState" style="display:none;">아직 등록된 제안이 없어요. 첫 번째로 제안해 보세요!</div>
+  </div>
+
+  <a class="admin-link" href="admin.html">관리자 페이지</a>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/app.js"></script>
+</body>
+</html>

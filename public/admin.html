@@ -1,0 +1,59 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>관리자 · 창립 기념일 선물 취합</title>
+<link rel="stylesheet" href="css/style.css" />
+</head>
+<body>
+
+<div class="wrap login-box" id="loginView">
+  <div class="card">
+    <h2>관리자 로그인</h2>
+    <div class="field">
+      <label for="passcodeInput">관리자 암호</label>
+      <input type="password" id="passcodeInput" placeholder="암호 입력" />
+    </div>
+    <button class="btn-primary" id="loginBtn">로그인</button>
+    <p class="error-text" id="loginError">암호가 올바르지 않습니다.</p>
+  </div>
+</div>
+
+<div class="wrap wide" id="adminView" style="display:none;">
+  <div class="toolbar">
+    <h1>🎁 선물 취합 관리</h1>
+    <div style="display:flex; gap:8px;">
+      <button class="btn-ghost" id="exportBtn">CSV 내보내기</button>
+      <button class="btn-ghost" id="logoutBtn">로그아웃</button>
+    </div>
+  </div>
+
+  <div class="stat-grid" id="statGrid"></div>
+
+  <div class="card">
+    <h2>제안 목록 (득표순)</h2>
+    <table class="admin-table">
+      <thead>
+        <tr>
+          <th style="width:32px;">#</th>
+          <th>선물</th>
+          <th>제안자</th>
+          <th>부서</th>
+          <th style="width:140px;">득표</th>
+          <th style="width:56px;"></th>
+        </tr>
+      </thead>
+      <tbody id="giftTableBody"></tbody>
+    </table>
+    <div class="empty-state" id="emptyState" style="display:none;">아직 등록된 제안이 없어요.</div>
+  </div>
+
+  <a class="admin-link" href="index.html">← 직원 참여 페이지로 이동</a>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script src="js/admin.js"></script>
+</body>
+</html>
