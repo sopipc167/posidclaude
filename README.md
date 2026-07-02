@@ -12,38 +12,54 @@
   - 득표순 정렬 목록, 부적절한 제안 삭제
   - CSV 내보내기
 
+## 구조
+
+- `api/index.js` — API 라우트를 담은 Express 앱 (Vercel 서버리스 함수로 배포됨)
+- `db.js` — Postgres 연결 및 스키마 (`pg` 사용)
+- `server.js` — 로컬 개발용 진입점 (`api/index.js`를 불러와 정적 파일까지 같이 서빙)
+- `public/` — 프론트엔드 (직원 페이지, 관리자 페이지)
+
+## Vercel 배포
+
+이 앱은 Postgres(서버리스 환경에서도 동작)를 사용하도록 만들어져 있어 Vercel에 바로 배포할 수 있습니다.
+
+1. [vercel.com](https://vercel.com) 에서 GitHub 계정으로 로그인
+2. **Add New → Project** → 이 저장소(`posidclaude`) 선택 → **Deploy**
+3. 프로젝트 대시보드 → **Storage** 탭 → **Create Database** → **Postgres** 선택 후 프로젝트에 연결
+   - 연결하면 `POSTGRES_URL` 등 환경변수가 자동으로 설정됩니다 (직접 만들 필요 없음)
+4. **Settings → Environment Variables**에서 `ADMIN_PASSWORD` 추가 (관리자 페이지 로그인 암호)
+5. 다시 배포(Redeploy)하면 완료. `https://your-project.vercel.app` 링크를 직원들에게 공유하면 됩니다.
+
+첫 요청이 들어올 때 테이블이 자동으로 생성되므로 별도 마이그레이션은 필요 없습니다.
+
 ## 로컬 실행
 
+Vercel CLI로 실행하면 프로덕션과 동일한 라우팅/환경변수로 테스트할 수 있습니다:
+
 ```bash
+npm install -g vercel
+vercel link       # 이 프로젝트와 연결
+vercel env pull .env.development.local   # Vercel의 POSTGRES_URL 등을 로컬로 가져옴
+vercel dev
+```
+
+또는 일반 Node 서버로 실행하려면 `.env` 파일에 Postgres 접속 정보를 넣고 실행합니다:
+
+```bash
+echo "POSTGRES_URL=postgres://user:password@localhost:5432/giftapp" > .env
 npm install
 npm start
 ```
 
-기본 포트는 3000번이며 `http://localhost:3000` 에서 확인할 수 있습니다.
-
 ## 환경변수
 
-| 변수 | 설명 | 기본값 |
-|---|---|---|
-| `PORT` | 서버 포트 | `3000` |
-| `ADMIN_PASSWORD` | 관리자 페이지 로그인 암호 | `admin1234` (배포 시 꼭 변경하세요) |
-| `DB_PATH` | SQLite 파일 경로 | `./data.db` |
-
-## 배포 (Render 예시)
-
-이 앱은 SQLite(`better-sqlite3`)로 파일에 데이터를 저장하는 **상시 구동 Node 서버**이므로,
-Render, Railway, Fly.io처럼 지속적인 디스크가 있는 서비스에 적합합니다.
-
-1. GitHub 저장소를 Render에 연결
-2. Build Command: `npm install`
-3. Start Command: `npm start`
-4. Environment → `ADMIN_PASSWORD` 값을 원하는 암호로 설정
-5. (권장) Render의 "Persistent Disk"를 추가하고 `DB_PATH`를 해당 디스크 경로로 지정하면
-   재배포 후에도 데이터가 유지됩니다. 디스크를 추가하지 않으면 재배포 시 데이터가 초기화될 수 있습니다.
-
-> Vercel처럼 서버리스(파일시스템이 매 요청마다 초기화되는) 환경에는 이 구성 그대로는 배포할 수 없습니다.
-> Vercel을 꼭 써야 한다면 `db.js`를 Postgres(예: Vercel Postgres, Neon) 등 외부 DB로 교체해야 합니다.
+| 변수 | 설명 |
+|---|---|
+| `POSTGRES_URL` | Postgres 접속 문자열 (Vercel Postgres 연결 시 자동 설정) |
+| `ADMIN_PASSWORD` | 관리자 페이지 로그인 암호 (기본값 `admin1234`, 배포 시 꼭 변경) |
+| `PORT` | 로컬 실행 시 서버 포트 (기본 `3000`, Vercel에서는 사용 안 함) |
 
 ## 데이터 초기화
 
-`data.db` 파일을 삭제하면 모든 제안/투표 기록이 초기화됩니다.
+관리자 페이지에서 각 제안을 개별 삭제할 수 있습니다. 전체 초기화가 필요하면 Vercel의 Storage 탭에서
+Postgres 데이터베이스의 `gifts`, `votes` 테이블 내용을 직접 비우면 됩니다.
