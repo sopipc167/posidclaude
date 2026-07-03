@@ -60,10 +60,21 @@
     }
   }
 
+  let liveUpdatesConnected = false;
+  function connectLiveUpdates() {
+    if (liveUpdatesConnected || typeof EventSource === 'undefined') return;
+    liveUpdatesConnected = true;
+    const source = new EventSource('/api/events');
+    source.addEventListener('gifts-changed', () => {
+      loadAll();
+    });
+  }
+
   function showAdmin() {
     els.loginView.style.display = 'none';
     els.adminView.style.display = 'block';
     loadAll();
+    connectLiveUpdates();
   }
 
   async function tryLogin(passcode) {

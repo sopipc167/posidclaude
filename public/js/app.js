@@ -194,9 +194,18 @@
     fetchGifts();
   });
 
+  function connectLiveUpdates() {
+    if (typeof EventSource === 'undefined') return;
+    const source = new EventSource('/api/events');
+    source.addEventListener('gifts-changed', () => {
+      fetchGifts();
+    });
+  }
+
   renderIdentity();
   if (!hasIdentity()) {
     els.identityCard.style.display = 'block';
   }
   fetchGifts();
+  connectLiveUpdates();
 })();

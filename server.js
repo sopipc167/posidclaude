@@ -12,6 +12,34 @@ const EMPLOYEE_ID_REGEX = /^[A-C]\d{4}(0[1-9]|1[0-2])\d{2}$/;
 app.use(express.json());
 app.use(express.static(path.join(__dirname, 'public')));
 
+// 실시간 갱신용 SSE(Server-Sent Events) — 누가 제안/투표/삭제하면 접속 중인 모든 클라이언트에 알림
+const sseClients = new Set();
+
+app.get('/api/events', (req, res) => {
+  res.writeHead(200, {
+    'Content-Type': 'text/event-stream',
+    'Cache-Control': 'no-cache',
+    Connection: 'keep-alive',
+  });
+  res.write('\n');
+  sseClients.add(res);
+  req.on('close', () => {
+    sseClients.delete(res);
+  });
+});
+
+function broadcastGiftsChanged() {
+  for (const client of sseClients) {
+    client.write('event: gifts-changed\ndata: {}\n\n');
+  }
+}
+
+setInterval(() => {
+  for (const client of sseClients) {
+    client.write(': heartbeat\n\n');
+  }
+}, 25000);
+
 function normalizeEmployeeId(value) {
   return String(value || '').trim().toUpperCase();
 }
@@ -108,6 +136,7 @@ app.post('/api/gifts', (req, res) => {
     .prepare(`SELECT g.*, 0 AS vote_count, 0 AS voted_by_me FROM gifts g WHERE g.id = ?`)
     .get(info.lastInsertRowid);
   res.status(201).json(serializeGift(row));
+  broadcastGiftsChanged();
 });
 
 // 특정 제안에 투표 / 취소 (토글) — 사번 기준으로 한 사람당 한 표
@@ -156,6 +185,7 @@ app.post('/api/gifts/:id/vote', (req, res) => {
     )
     .get(normalizedEmployeeId, giftId);
   res.json(serializeGift(row));
+  broadcastGiftsChanged();
 });
 
 // ---- 관리자 API ----
@@ -191,6 +221,7 @@ app.delete('/api/admin/gifts/:id', requireAdmin, (req, res) => {
   const giftId = Number(req.params.id);
   db.prepare('DELETE FROM gifts WHERE id = ?').run(giftId);
   res.json({ ok: true });
+  broadcastGiftsChanged();
 });
 
 app.get('/api/admin/export.csv', requireAdmin, (req, res) => {
