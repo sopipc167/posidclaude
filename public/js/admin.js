@@ -1,10 +1,12 @@
 (function () {
-  const STORAGE_PASSCODE = 'gift.adminPasscode';
+  const STORAGE_USERNAME = 'gift.adminUsername';
+  const STORAGE_PASSWORD = 'gift.adminPassword';
 
   const els = {
     loginView: document.getElementById('loginView'),
     adminView: document.getElementById('adminView'),
-    passcodeInput: document.getElementById('passcodeInput'),
+    usernameInput: document.getElementById('usernameInput'),
+    passwordInput: document.getElementById('passwordInput'),
     loginBtn: document.getElementById('loginBtn'),
     loginError: document.getElementById('loginError'),
     exportBtn: document.getElementById('exportBtn'),
@@ -12,6 +14,10 @@
     statGrid: document.getElementById('statGrid'),
     giftTableBody: document.getElementById('giftTableBody'),
     emptyState: document.getElementById('emptyState'),
+    identityTableBody: document.getElementById('identityTableBody'),
+    identityEmptyState: document.getElementById('identityEmptyState'),
+    voteTableBody: document.getElementById('voteTableBody'),
+    voteEmptyState: document.getElementById('voteEmptyState'),
     toast: document.getElementById('toast'),
   };
 
@@ -21,28 +27,35 @@
     setTimeout(() => els.toast.classList.remove('show'), 2200);
   }
 
-  function getPasscode() {
-    return sessionStorage.getItem(STORAGE_PASSCODE) || '';
+  function getCredentials() {
+    return {
+      username: sessionStorage.getItem(STORAGE_USERNAME) || '',
+      password: sessionStorage.getItem(STORAGE_PASSWORD) || '',
+    };
   }
 
-  function setPasscode(pc) {
-    sessionStorage.setItem(STORAGE_PASSCODE, pc);
+  function setCredentials(username, password) {
+    sessionStorage.setItem(STORAGE_USERNAME, username);
+    sessionStorage.setItem(STORAGE_PASSWORD, password);
   }
 
-  function clearPasscode() {
-    sessionStorage.removeItem(STORAGE_PASSCODE);
+  function clearCredentials() {
+    sessionStorage.removeItem(STORAGE_USERNAME);
+    sessionStorage.removeItem(STORAGE_PASSWORD);
   }
 
   async function adminFetch(url, options = {}) {
+    const { username, password } = getCredentials();
     const res = await fetch(url, {
       ...options,
       headers: {
         ...(options.headers || {}),
-        'x-admin-passcode': getPasscode(),
+        'x-admin-username': username,
+        'x-admin-password': password,
       },
     });
     if (res.status === 401) {
-      clearPasscode();
+      clearCredentials();
       showLogin('세션이 만료되었습니다. 다시 로그인해 주세요.');
       throw new Error('unauthorized');
     }
@@ -77,32 +90,35 @@
     connectLiveUpdates();
   }
 
-  async function tryLogin(passcode) {
+  async function tryLogin(username, password) {
     const res = await fetch('/api/admin/login', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ passcode }),
+      body: JSON.stringify({ username, password }),
     });
     if (res.ok) {
-      setPasscode(passcode);
+      setCredentials(username, password);
       showAdmin();
     } else {
-      showLogin('암호가 올바르지 않습니다.');
+      showLogin('아이디 또는 비밀번호가 올바르지 않습니다.');
     }
   }
 
   els.loginBtn.addEventListener('click', () => {
-    const pc = els.passcodeInput.value;
-    if (!pc) return;
-    tryLogin(pc);
+    const username = els.usernameInput.value.trim();
+    const password = els.passwordInput.value;
+    if (!username || !password) return;
+    tryLogin(username, password);
   });
 
-  els.passcodeInput.addEventListener('keydown', (e) => {
-    if (e.key === 'Enter') els.loginBtn.click();
+  [els.usernameInput, els.passwordInput].forEach((input) => {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') els.loginBtn.click();
+    });
   });
 
   els.logoutBtn.addEventListener('click', () => {
-    clearPasscode();
+    clearCredentials();
     showLogin();
   });
 
@@ -183,6 +199,43 @@
     });
   }
 
+  async function loadIdentities() {
+    const res = await adminFetch('/api/admin/identities');
+    const identities = await res.json();
+    els.identityTableBody.innerHTML = '';
+    els.identityEmptyState.style.display = identities.length ? 'none' : 'block';
+
+    identities.forEach((identity) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(identity.employeeId)}</td>
+        <td>${escapeHtml(identity.name)}</td>
+        <td>${escapeHtml(identity.team)}</td>
+        <td>${escapeHtml(identity.createdAt)}</td>
+      `;
+      els.identityTableBody.appendChild(tr);
+    });
+  }
+
+  async function loadVotes() {
+    const res = await adminFetch('/api/admin/votes');
+    const votes = await res.json();
+    els.voteTableBody.innerHTML = '';
+    els.voteEmptyState.style.display = votes.length ? 'none' : 'block';
+
+    votes.forEach((vote) => {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `
+        <td>${escapeHtml(vote.employeeId)}</td>
+        <td>${escapeHtml(vote.voterName)}</td>
+        <td>${escapeHtml(vote.team)}</td>
+        <td>${escapeHtml(vote.giftText)}</td>
+        <td>${escapeHtml(vote.createdAt)}</td>
+      `;
+      els.voteTableBody.appendChild(tr);
+    });
+  }
+
   async function deleteGift(id) {
     if (!confirm('이 제안을 삭제할까요? 관련 투표도 함께 삭제됩니다.')) return;
     const res = await adminFetch(`/api/admin/gifts/${id}`, { method: 'DELETE' });
@@ -203,9 +256,12 @@
   function loadAll() {
     loadSummary().catch(() => {});
     loadGifts().catch(() => {});
+    loadIdentities().catch(() => {});
+    loadVotes().catch(() => {});
   }
 
-  if (getPasscode()) {
+  const { username, password } = getCredentials();
+  if (username && password) {
     showAdmin();
   } else {
     showLogin();

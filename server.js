@@ -4,7 +4,8 @@ const db = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
+const ADMIN_USERNAME = process.env.ADMIN_USERNAME || 'admin';
+const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || '1234';
 
 // A/B/C 중 하나 + 입사년도 4자리 + 입사월 2자리(01~12) + 입사순서 2자리
 const EMPLOYEE_ID_REGEX = /^[A-C]\d{4}(0[1-9]|1[0-2])\d{2}$/;
@@ -45,9 +46,10 @@ function normalizeEmployeeId(value) {
 }
 
 function requireAdmin(req, res, next) {
-  const passcode = req.header('x-admin-passcode');
-  if (!passcode || passcode !== ADMIN_PASSWORD) {
-    return res.status(401).json({ error: '관리자 암호가 올바르지 않습니다.' });
+  const username = req.header('x-admin-username');
+  const password = req.header('x-admin-password');
+  if (username !== ADMIN_USERNAME || password !== ADMIN_PASSWORD) {
+    return res.status(401).json({ error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
   }
   next();
 }
@@ -191,11 +193,11 @@ app.post('/api/gifts/:id/vote', (req, res) => {
 // ---- 관리자 API ----
 
 app.post('/api/admin/login', (req, res) => {
-  const { passcode } = req.body || {};
-  if (passcode === ADMIN_PASSWORD) {
+  const { username, password } = req.body || {};
+  if (username === ADMIN_USERNAME && password === ADMIN_PASSWORD) {
     return res.json({ ok: true });
   }
-  res.status(401).json({ ok: false, error: '암호가 올바르지 않습니다.' });
+  res.status(401).json({ ok: false, error: '아이디 또는 비밀번호가 올바르지 않습니다.' });
 });
 
 app.get('/api/admin/summary', requireAdmin, (req, res) => {
@@ -215,6 +217,44 @@ app.get('/api/admin/summary', requireAdmin, (req, res) => {
     uniqueParticipants,
     topGift: top ? { text: top.text, proposerName: top.proposer_name, voteCount: top.vote_count } : null,
   });
+});
+
+// 등록된 유저(사번) 목록
+app.get('/api/admin/identities', requireAdmin, (req, res) => {
+  const rows = db
+    .prepare('SELECT employee_id, name, team, created_at FROM identities ORDER BY created_at ASC')
+    .all();
+  res.json(
+    rows.map((r) => ({
+      employeeId: r.employee_id,
+      name: r.name,
+      team: r.team,
+      createdAt: r.created_at,
+    }))
+  );
+});
+
+// 누가 어떤 선물에 투표했는지 상세 내역
+app.get('/api/admin/votes', requireAdmin, (req, res) => {
+  const rows = db
+    .prepare(
+      `SELECT v.employee_id, v.voter_name, v.team, v.created_at,
+              g.id AS gift_id, g.text AS gift_text
+       FROM votes v
+       JOIN gifts g ON g.id = v.gift_id
+       ORDER BY v.created_at DESC`
+    )
+    .all();
+  res.json(
+    rows.map((r) => ({
+      employeeId: r.employee_id,
+      voterName: r.voter_name,
+      team: r.team,
+      createdAt: r.created_at,
+      giftId: r.gift_id,
+      giftText: r.gift_text,
+    }))
+  );
 });
 
 app.delete('/api/admin/gifts/:id', requireAdmin, (req, res) => {
