@@ -24,6 +24,30 @@ function requireAdmin(req, res, next) {
   next();
 }
 
+// 사번 하나당 사람 한 명만 매칭되도록 확인/등록. 처음 보는 사번이면 이름으로 등록하고,
+// 이미 등록된 사번인데 이름이 다르면 거부한다.
+function resolveIdentity(employeeId, name, team) {
+  const existing = db.prepare('SELECT * FROM identities WHERE employee_id = ?').get(employeeId);
+  if (!existing) {
+    db.prepare('INSERT INTO identities (employee_id, name, team) VALUES (?, ?, ?)').run(
+      employeeId,
+      name,
+      team
+    );
+    return { ok: true };
+  }
+  if (existing.name !== name) {
+    return {
+      ok: false,
+      error: `이 사번(${employeeId})은 이미 '${existing.name}'님으로 등록되어 있어요. 본인이 맞다면 이름을 동일하게 입력해 주세요.`,
+    };
+  }
+  if (existing.team !== team) {
+    db.prepare('UPDATE identities SET team = ? WHERE employee_id = ?').run(team, employeeId);
+  }
+  return { ok: true };
+}
+
 function serializeGift(row) {
   return {
     id: row.id,
@@ -70,6 +94,11 @@ app.post('/api/gifts', (req, res) => {
     return res.status(400).json({ error: '팀 명을 입력해 주세요.' });
   }
 
+  const identityCheck = resolveIdentity(normalizedEmployeeId, proposerName.trim(), team.trim());
+  if (!identityCheck.ok) {
+    return res.status(409).json({ error: identityCheck.error });
+  }
+
   const info = db
     .prepare(
       `INSERT INTO gifts (text, proposer_employee_id, proposer_name, team) VALUES (?, ?, ?, ?)`
@@ -90,9 +119,20 @@ app.post('/api/gifts/:id/vote', (req, res) => {
   if (!EMPLOYEE_ID_REGEX.test(normalizedEmployeeId)) {
     return res.status(400).json({ error: '사번 형식이 올바르지 않습니다. 예: A20220802' });
   }
+  if (!voterName || !voterName.trim()) {
+    return res.status(400).json({ error: '이름을 입력해 주세요.' });
+  }
+  if (!team || !team.trim()) {
+    return res.status(400).json({ error: '팀 명을 입력해 주세요.' });
+  }
   const gift = db.prepare('SELECT id FROM gifts WHERE id = ?').get(giftId);
   if (!gift) {
     return res.status(404).json({ error: '존재하지 않는 제안입니다.' });
+  }
+
+  const identityCheck = resolveIdentity(normalizedEmployeeId, voterName.trim(), team.trim());
+  if (!identityCheck.ok) {
+    return res.status(409).json({ error: identityCheck.error });
   }
 
   const existing = db
@@ -104,7 +144,7 @@ app.post('/api/gifts/:id/vote', (req, res) => {
   } else {
     db.prepare(
       `INSERT INTO votes (gift_id, employee_id, voter_name, team) VALUES (?, ?, ?, ?)`
-    ).run(giftId, normalizedEmployeeId, voterName || '', team || '');
+    ).run(giftId, normalizedEmployeeId, voterName.trim(), team.trim());
   }
 
   const row = db
@@ -131,15 +171,7 @@ app.post('/api/admin/login', (req, res) => {
 app.get('/api/admin/summary', requireAdmin, (req, res) => {
   const totalGifts = db.prepare('SELECT COUNT(*) AS c FROM gifts').get().c;
   const totalVotes = db.prepare('SELECT COUNT(*) AS c FROM votes').get().c;
-  const uniqueParticipants = db
-    .prepare(
-      `SELECT COUNT(*) AS c FROM (
-         SELECT proposer_employee_id AS employee_id FROM gifts
-         UNION
-         SELECT employee_id FROM votes
-       )`
-    )
-    .get().c;
+  const uniqueParticipants = db.prepare('SELECT COUNT(*) AS c FROM identities').get().c;
   const top = db
     .prepare(
       `SELECT g.text, g.proposer_name,

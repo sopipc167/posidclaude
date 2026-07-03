@@ -5,6 +5,13 @@ const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
 const db = new DatabaseSync(DB_PATH);
 
 db.exec(`
+  CREATE TABLE IF NOT EXISTS identities (
+    employee_id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    team TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS gifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
