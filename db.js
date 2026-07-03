@@ -1,30 +1,27 @@
-const { MongoClient } = require('mongodb');
+const path = require('path');
+const { DatabaseSync } = require('node:sqlite');
 
-const uri = process.env.MONGODB_URI;
-if (!uri) {
-  throw new Error('MONGODB_URI 환경변수가 필요합니다.');
-}
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data.db');
+const db = new DatabaseSync(DB_PATH);
 
-const dbName = process.env.MONGODB_DB || 'giftapp';
+db.exec(`
+  CREATE TABLE IF NOT EXISTS gifts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    text TEXT NOT NULL,
+    proposer_name TEXT NOT NULL,
+    department TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  );
 
-if (!global._mongoClientPromise) {
-  const client = new MongoClient(uri);
-  global._mongoClientPromise = client.connect();
-}
+  CREATE TABLE IF NOT EXISTS votes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    gift_id INTEGER NOT NULL REFERENCES gifts(id) ON DELETE CASCADE,
+    voter_id TEXT NOT NULL,
+    voter_name TEXT,
+    voter_department TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(gift_id, voter_id)
+  );
+`);
 
-let indexesReady;
-function ensureIndexes(db) {
-  if (!indexesReady) {
-    indexesReady = db.collection('votes').createIndex({ giftId: 1, voterId: 1 }, { unique: true });
-  }
-  return indexesReady;
-}
-
-async function getCollections() {
-  const client = await global._mongoClientPromise;
-  const db = client.db(dbName);
-  await ensureIndexes(db);
-  return { gifts: db.collection('gifts'), votes: db.collection('votes') };
-}
-
-module.exports = { getCollections };
+module.exports = db;

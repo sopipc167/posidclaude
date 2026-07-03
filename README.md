@@ -12,66 +12,41 @@
   - 득표순 정렬 목록, 부적절한 제안 삭제
   - CSV 내보내기
 
-## 구조
+## DB: 별도 설정 필요 없음
 
-- `api/index.js` — API 라우트를 담은 Express 앱 (Vercel 서버리스 함수로 배포됨)
-- `db.js` — MongoDB 연결 (공식 `mongodb` 드라이버)
-- `server.js` — 로컬 개발용 진입점 (`api/index.js`를 불러와 정적 파일까지 같이 서빙)
-- `public/` — 프론트엔드 (직원 페이지, 관리자 페이지)
-
-## MongoDB Atlas 준비 (Vercel/Render 공통)
-
-1. [mongodb.com/cloud/atlas](https://www.mongodb.com/cloud/atlas) 가입 후 무료 클러스터(M0) 생성
-2. **Database Access**에서 사용자 계정 생성 (아이디/비밀번호)
-3. **Network Access**에서 `0.0.0.0/0` 허용 (Vercel/Render 같은 클라우드 서비스는 고정 IP가 아니므로 전체 허용 필요)
-4. **Connect → Drivers**에서 연결 문자열 복사 (`mongodb+srv://사용자:비밀번호@...`)
-
-이 연결 문자열을 아래 `MONGODB_URI` 환경변수로 사용합니다. 데이터베이스/컬렉션과 인덱스는 앱이 처음 요청을 처리할 때 자동으로 만들어지므로 별도 설정이 필요 없습니다.
-
-## Vercel 배포
-
-1. [vercel.com](https://vercel.com) 에서 GitHub 계정으로 로그인
-2. **Add New → Project** → 이 저장소(`posidclaude`) 선택 → **Deploy**
-3. **Settings → Environment Variables**에 추가:
-   - `MONGODB_URI`: 위에서 복사한 Atlas 연결 문자열
-   - `ADMIN_PASSWORD`: 관리자 페이지 로그인 암호
-4. 다시 배포(Redeploy)하면 완료. `https://your-project.vercel.app` 링크를 직원들에게 공유하면 됩니다.
-
-## Render 배포
-
-1. Render 대시보드 → **New + → Web Service** → 이 저장소 연결
-2. **Environment**를 **Node**로 선택 (Docker 아님)
-3. Build Command: `npm install`, Start Command: `npm start`
-4. Environment Variables에 `MONGODB_URI`, `ADMIN_PASSWORD` 추가
+Node.js에 내장된 `node:sqlite` 모듈을 사용합니다. 외부 DB 서비스 가입, 연결 문자열, 관련 환경변수가 전혀
+필요 없고, 저장소 폴더에 `data.db` 파일 하나로 저장됩니다. 앱을 처음 실행하는 순간 테이블이 자동으로 생성됩니다.
 
 ## 로컬 실행
 
 ```bash
-echo "MONGODB_URI=mongodb+srv://사용자:비밀번호@..." > .env
-echo "ADMIN_PASSWORD=원하는암호" >> .env
 npm install
 npm start
 ```
 
-Vercel CLI로 실행하면 프로덕션과 동일한 라우팅/환경변수로 테스트할 수 있습니다:
+`http://localhost:3000` 에서 확인할 수 있습니다.
 
-```bash
-npm install -g vercel
-vercel link
-vercel env pull .env.development.local
-vercel dev
-```
+## Render 배포
+
+1. Render 대시보드 → **New + → Web Service** → 이 저장소 연결, **Branch**는 `claude/anniversary-gift-collection-n5krk6`
+2. **Environment**: **Node**
+3. **Build Command**: `npm install`
+4. **Start Command**: `npm start`
+5. **Environment Variables**에 `ADMIN_PASSWORD`만 추가하면 끝 (DB 관련 변수 없음)
+
+## ⚠️ 파일 기반 DB의 한계
+
+- **Vercel 같은 서버리스 플랫폼에는 배포할 수 없습니다.** 요청마다 파일시스템이 초기화되기 때문입니다. Render, Railway, 자체 서버처럼 상시 구동되는 곳에서만 동작합니다.
+- Render **무료 플랜은 Persistent Disk를 지원하지 않아** 재배포 시 `data.db`가 초기화될 수 있습니다. 데이터를 계속 유지하려면 유료 플랜으로 올리고 Disk를 추가한 뒤 `DB_PATH` 환경변수로 그 경로를 지정하세요 (예: `/data/data.db`).
 
 ## 환경변수
 
-| 변수 | 설명 |
-|---|---|
-| `MONGODB_URI` | MongoDB 연결 문자열 (Atlas의 Connect → Drivers에서 복사) |
-| `MONGODB_DB` | 사용할 데이터베이스 이름 (기본값 `giftapp`) |
-| `ADMIN_PASSWORD` | 관리자 페이지 로그인 암호 (기본값 `admin1234`, 배포 시 꼭 변경) |
-| `PORT` | 로컬 실행 시 서버 포트 (기본 `3000`, Vercel에서는 사용 안 함) |
+| 변수 | 설명 | 기본값 |
+|---|---|---|
+| `ADMIN_PASSWORD` | 관리자 페이지 로그인 암호 | `admin1234` (배포 시 꼭 변경) |
+| `PORT` | 서버 포트 | `3000` |
+| `DB_PATH` | SQLite 파일 경로 | `./data.db` |
 
 ## 데이터 초기화
 
-관리자 페이지에서 각 제안을 개별 삭제할 수 있습니다. 전체 초기화가 필요하면 MongoDB Atlas 대시보드에서
-`giftapp` 데이터베이스의 `gifts`, `votes` 컬렉션을 직접 비우면 됩니다.
+`data.db` 파일을 삭제하면 모든 제안/투표 기록이 초기화됩니다.
