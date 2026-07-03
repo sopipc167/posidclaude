@@ -8,19 +8,20 @@ db.exec(`
   CREATE TABLE IF NOT EXISTS gifts (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     text TEXT NOT NULL,
+    proposer_employee_id TEXT NOT NULL,
     proposer_name TEXT NOT NULL,
-    department TEXT,
+    team TEXT NOT NULL,
     created_at TEXT NOT NULL DEFAULT (datetime('now'))
   );
 
   CREATE TABLE IF NOT EXISTS votes (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     gift_id INTEGER NOT NULL REFERENCES gifts(id) ON DELETE CASCADE,
-    voter_id TEXT NOT NULL,
+    employee_id TEXT NOT NULL,
     voter_name TEXT,
-    voter_department TEXT,
+    team TEXT,
     created_at TEXT NOT NULL DEFAULT (datetime('now')),
-    UNIQUE(gift_id, voter_id)
+    UNIQUE(gift_id, employee_id)
   );
 `);
 

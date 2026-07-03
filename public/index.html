@@ -15,23 +15,30 @@
 
   <div class="card">
     <div class="identity-banner">
-      <span>내 이름: <strong id="whoami">아직 입력 전</strong></span>
-      <button class="btn-ghost" id="editIdentityBtn">이름/부서 수정</button>
+      <span>내 정보: <strong id="whoami">아직 입력 전</strong></span>
+      <button class="btn-ghost" id="editIdentityBtn">정보 수정</button>
     </div>
   </div>
 
   <div class="card" id="identityCard" style="display:none;">
     <h2>내 정보</h2>
+    <p class="field-hint">한 사람이 여러 계정을 갖지 않도록 사번으로 본인을 확인해요. 사번당 투표는 한 번만 반영됩니다.</p>
+    <div class="field">
+      <label for="identityEmployeeId">사번</label>
+      <input type="text" id="identityEmployeeId" placeholder="예: A20220802" maxlength="9" />
+      <p class="field-hint">형식: A/B/C 중 1개 + 입사년도 4자리 + 입사월 2자리 + 입사순서 2자리</p>
+    </div>
     <div class="field-row">
       <div class="field">
         <label for="identityName">이름</label>
         <input type="text" id="identityName" placeholder="예: 홍길동" />
       </div>
       <div class="field">
-        <label for="identityDept">부서 (선택)</label>
-        <input type="text" id="identityDept" placeholder="예: 개발팀" />
+        <label for="identityTeam">팀 명</label>
+        <input type="text" id="identityTeam" placeholder="예: 개발팀" />
       </div>
     </div>
+    <p class="error-text" id="identityError">사번 형식이 올바르지 않습니다. 예: A20220802</p>
     <button class="btn-primary" id="saveIdentityBtn">저장</button>
   </div>
 

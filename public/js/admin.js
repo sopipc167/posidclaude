@@ -151,8 +151,9 @@
       tr.innerHTML = `
         <td class="num">${idx + 1}</td>
         <td>${escapeHtml(gift.text)}</td>
+        <td>${escapeHtml(gift.proposerEmployeeId)}</td>
         <td>${escapeHtml(gift.proposerName)}</td>
-        <td>${escapeHtml(gift.department || '-')}</td>
+        <td>${escapeHtml(gift.team || '-')}</td>
         <td>
           <div class="bar-cell">
             <div class="track"><div class="fill" style="width:${(gift.voteCount / maxVotes) * 100}%"></div></div>

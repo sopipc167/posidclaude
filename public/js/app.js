@@ -1,30 +1,18 @@
 (function () {
-  const STORAGE_VOTER_ID = 'gift.voterId';
+  const STORAGE_EMPLOYEE_ID = 'gift.employeeId';
   const STORAGE_NAME = 'gift.name';
-  const STORAGE_DEPT = 'gift.dept';
+  const STORAGE_TEAM = 'gift.team';
 
-  function uuid() {
-    if (window.crypto && crypto.randomUUID) return crypto.randomUUID();
-    return 'v-' + Math.random().toString(36).slice(2) + Date.now();
-  }
-
-  function getVoterId() {
-    let id = localStorage.getItem(STORAGE_VOTER_ID);
-    if (!id) {
-      id = uuid();
-      localStorage.setItem(STORAGE_VOTER_ID, id);
-    }
-    return id;
-  }
-
-  const voterId = getVoterId();
+  const EMPLOYEE_ID_REGEX = /^[A-C]\d{4}(0[1-9]|1[0-2])\d{2}$/;
 
   const els = {
     whoami: document.getElementById('whoami'),
     editIdentityBtn: document.getElementById('editIdentityBtn'),
     identityCard: document.getElementById('identityCard'),
+    identityEmployeeId: document.getElementById('identityEmployeeId'),
     identityName: document.getElementById('identityName'),
-    identityDept: document.getElementById('identityDept'),
+    identityTeam: document.getElementById('identityTeam'),
+    identityError: document.getElementById('identityError'),
     saveIdentityBtn: document.getElementById('saveIdentityBtn'),
     giftForm: document.getElementById('giftForm'),
     giftText: document.getElementById('giftText'),
@@ -35,21 +23,28 @@
 
   function getIdentity() {
     return {
+      employeeId: localStorage.getItem(STORAGE_EMPLOYEE_ID) || '',
       name: localStorage.getItem(STORAGE_NAME) || '',
-      dept: localStorage.getItem(STORAGE_DEPT) || '',
+      team: localStorage.getItem(STORAGE_TEAM) || '',
     };
   }
 
-  function setIdentity(name, dept) {
+  function setIdentity(employeeId, name, team) {
+    localStorage.setItem(STORAGE_EMPLOYEE_ID, employeeId);
     localStorage.setItem(STORAGE_NAME, name);
-    localStorage.setItem(STORAGE_DEPT, dept);
+    localStorage.setItem(STORAGE_TEAM, team);
     renderIdentity();
   }
 
+  function hasIdentity() {
+    const { employeeId, name, team } = getIdentity();
+    return EMPLOYEE_ID_REGEX.test(employeeId) && !!name && !!team;
+  }
+
   function renderIdentity() {
-    const { name, dept } = getIdentity();
-    if (name) {
-      els.whoami.textContent = dept ? `${name} (${dept})` : name;
+    const { employeeId, name, team } = getIdentity();
+    if (hasIdentity()) {
+      els.whoami.textContent = `${name} (${team}) · ${employeeId}`;
     } else {
       els.whoami.textContent = '아직 입력 전';
     }
@@ -62,37 +57,54 @@
   }
 
   function requireIdentity() {
-    const { name } = getIdentity();
-    if (name) return true;
+    if (hasIdentity()) return true;
     els.identityCard.style.display = 'block';
     els.identityCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    els.identityName.focus();
-    showToast('먼저 이름을 입력해 주세요.');
+    els.identityEmployeeId.focus();
+    showToast('먼저 사번/이름/팀 명을 입력해 주세요.');
     return false;
   }
 
   els.editIdentityBtn.addEventListener('click', () => {
-    const { name, dept } = getIdentity();
+    const { employeeId, name, team } = getIdentity();
+    els.identityEmployeeId.value = employeeId;
     els.identityName.value = name;
-    els.identityDept.value = dept;
+    els.identityTeam.value = team;
     els.identityCard.style.display = els.identityCard.style.display === 'block' ? 'none' : 'block';
   });
 
   els.saveIdentityBtn.addEventListener('click', () => {
+    const employeeId = els.identityEmployeeId.value.trim().toUpperCase();
     const name = els.identityName.value.trim();
-    const dept = els.identityDept.value.trim();
+    const team = els.identityTeam.value.trim();
+
+    if (!EMPLOYEE_ID_REGEX.test(employeeId)) {
+      els.identityError.classList.add('show');
+      els.identityEmployeeId.focus();
+      return;
+    }
+    els.identityError.classList.remove('show');
+
     if (!name) {
       showToast('이름을 입력해 주세요.');
       els.identityName.focus();
       return;
     }
-    setIdentity(name, dept);
+    if (!team) {
+      showToast('팀 명을 입력해 주세요.');
+      els.identityTeam.focus();
+      return;
+    }
+
+    setIdentity(employeeId, name, team);
     els.identityCard.style.display = 'none';
     showToast('저장되었습니다.');
+    fetchGifts();
   });
 
   async function fetchGifts() {
-    const res = await fetch(`/api/gifts?voterId=${encodeURIComponent(voterId)}`);
+    const { employeeId } = getIdentity();
+    const res = await fetch(`/api/gifts?employeeId=${encodeURIComponent(employeeId)}`);
     const gifts = await res.json();
     renderGifts(gifts);
   }
@@ -119,7 +131,7 @@
 
       const meta = document.createElement('div');
       meta.className = 'gift-meta';
-      meta.textContent = `${gift.proposerName}${gift.department ? ' · ' + gift.department : ''} 제안`;
+      meta.textContent = `${gift.proposerName}${gift.team ? ' · ' + gift.team : ''} 제안`;
 
       const track = document.createElement('div');
       track.className = 'gift-bar-track';
@@ -146,14 +158,15 @@
 
   async function toggleVote(giftId) {
     if (!requireIdentity()) return;
-    const { name, dept } = getIdentity();
+    const { employeeId, name, team } = getIdentity();
     const res = await fetch(`/api/gifts/${giftId}/vote`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ voterId, voterName: name, voterDepartment: dept }),
+      body: JSON.stringify({ employeeId, voterName: name, team }),
     });
     if (!res.ok) {
-      showToast('투표 처리 중 오류가 발생했습니다.');
+      const data = await res.json().catch(() => ({}));
+      showToast(data.error || '투표 처리 중 오류가 발생했습니다.');
       return;
     }
     fetchGifts();
@@ -164,12 +177,12 @@
     if (!requireIdentity()) return;
     const text = els.giftText.value.trim();
     if (!text) return;
-    const { name, dept } = getIdentity();
+    const { employeeId, name, team } = getIdentity();
 
     const res = await fetch('/api/gifts', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ text, proposerName: name, department: dept }),
+      body: JSON.stringify({ text, employeeId, proposerName: name, team }),
     });
     if (!res.ok) {
       const data = await res.json().catch(() => ({}));
@@ -182,7 +195,7 @@
   });
 
   renderIdentity();
-  if (!getIdentity().name) {
+  if (!hasIdentity()) {
     els.identityCard.style.display = 'block';
   }
   fetchGifts();
