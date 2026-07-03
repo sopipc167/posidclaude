@@ -234,6 +234,17 @@ app.get('/api/admin/identities', requireAdmin, (req, res) => {
   );
 });
 
+// 유저(사번) 삭제 — 등록 정보와 그 사람의 투표를 함께 지운다.
+// 그 사람이 제안한 선물 자체는 다른 사람의 투표가 걸려있을 수 있어 남겨두고,
+// 필요하면 제안 목록에서 별도로 삭제한다.
+app.delete('/api/admin/identities/:employeeId', requireAdmin, (req, res) => {
+  const employeeId = normalizeEmployeeId(req.params.employeeId);
+  db.prepare('DELETE FROM votes WHERE employee_id = ?').run(employeeId);
+  db.prepare('DELETE FROM identities WHERE employee_id = ?').run(employeeId);
+  res.json({ ok: true });
+  broadcastGiftsChanged();
+});
+
 // 누가 어떤 선물에 투표했는지 상세 내역
 app.get('/api/admin/votes', requireAdmin, (req, res) => {
   const rows = db

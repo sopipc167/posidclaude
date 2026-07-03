@@ -212,9 +212,34 @@
         <td>${escapeHtml(identity.name)}</td>
         <td>${escapeHtml(identity.team)}</td>
         <td>${escapeHtml(identity.createdAt)}</td>
+        <td></td>
       `;
+      const delTd = tr.querySelector('td:last-child');
+      const delBtn = document.createElement('button');
+      delBtn.className = 'delete-btn';
+      delBtn.textContent = '삭제';
+      delBtn.addEventListener('click', () => deleteIdentity(identity.employeeId));
+      delTd.appendChild(delBtn);
       els.identityTableBody.appendChild(tr);
     });
+  }
+
+  async function deleteIdentity(employeeId) {
+    if (
+      !confirm(
+        `사번 ${employeeId} 유저를 삭제할까요?\n이 사람의 등록 정보와 투표 기록이 삭제됩니다. (제안한 선물은 남아있습니다)`
+      )
+    )
+      return;
+    const res = await adminFetch(`/api/admin/identities/${encodeURIComponent(employeeId)}`, {
+      method: 'DELETE',
+    });
+    if (res.ok) {
+      showToast('삭제되었습니다.');
+      loadAll();
+    } else {
+      showToast('삭제에 실패했습니다.');
+    }
   }
 
   async function loadVotes() {
