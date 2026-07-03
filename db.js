@@ -1,44 +1,30 @@
-const { Pool } = require('pg');
+const { MongoClient } = require('mongodb');
 
-const connectionString = process.env.POSTGRES_URL || process.env.DATABASE_URL;
-if (!connectionString) {
-  throw new Error('POSTGRES_URL (또는 DATABASE_URL) 환경변수가 필요합니다.');
+const uri = process.env.MONGODB_URI;
+if (!uri) {
+  throw new Error('MONGODB_URI 환경변수가 필요합니다.');
 }
 
-const pool = new Pool({
-  connectionString,
-  ssl: connectionString.includes('sslmode=disable') ? false : { rejectUnauthorized: false },
-});
+const dbName = process.env.MONGODB_DB || 'giftapp';
 
-let schemaReady;
-function ensureSchema() {
-  if (!schemaReady) {
-    schemaReady = pool.query(`
-      CREATE TABLE IF NOT EXISTS gifts (
-        id SERIAL PRIMARY KEY,
-        text TEXT NOT NULL,
-        proposer_name TEXT NOT NULL,
-        department TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now()
-      );
+if (!global._mongoClientPromise) {
+  const client = new MongoClient(uri);
+  global._mongoClientPromise = client.connect();
+}
 
-      CREATE TABLE IF NOT EXISTS votes (
-        id SERIAL PRIMARY KEY,
-        gift_id INTEGER NOT NULL REFERENCES gifts(id) ON DELETE CASCADE,
-        voter_id TEXT NOT NULL,
-        voter_name TEXT,
-        voter_department TEXT,
-        created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
-        UNIQUE(gift_id, voter_id)
-      );
-    `);
+let indexesReady;
+function ensureIndexes(db) {
+  if (!indexesReady) {
+    indexesReady = db.collection('votes').createIndex({ giftId: 1, voterId: 1 }, { unique: true });
   }
-  return schemaReady;
+  return indexesReady;
 }
 
-async function query(text, params) {
-  await ensureSchema();
-  return pool.query(text, params);
+async function getCollections() {
+  const client = await global._mongoClientPromise;
+  const db = client.db(dbName);
+  await ensureIndexes(db);
+  return { gifts: db.collection('gifts'), votes: db.collection('votes') };
 }
 
-module.exports = { query };
+module.exports = { getCollections };

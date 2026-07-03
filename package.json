@@ -10,7 +10,7 @@
   },
   "dependencies": {
     "express": "^4.21.0",
-    "pg": "^8.13.0"
+    "mongodb": "^6.10.0"
   },
   "devDependencies": {
     "dotenv": "^16.4.5"

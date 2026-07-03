@@ -1,5 +1,6 @@
 const express = require('express');
-const db = require('../db');
+const { ObjectId } = require('mongodb');
+const { getCollections } = require('../db');
 
 const app = express();
 const ADMIN_PASSWORD = process.env.ADMIN_PASSWORD || 'admin1234';
@@ -14,30 +15,52 @@ function requireAdmin(req, res, next) {
   next();
 }
 
-function serializeGift(row) {
+function toObjectId(id) {
+  try {
+    return new ObjectId(id);
+  } catch (e) {
+    return null;
+  }
+}
+
+function serializeGift(gift, voteCount, votedByMe) {
   return {
-    id: row.id,
-    text: row.text,
-    proposerName: row.proposer_name,
-    department: row.department || '',
-    createdAt: row.created_at,
-    voteCount: Number(row.vote_count) || 0,
-    votedByMe: !!Number(row.voted_by_me),
+    id: gift._id.toString(),
+    text: gift.text,
+    proposerName: gift.proposerName,
+    department: gift.department || '',
+    createdAt: gift.createdAt,
+    voteCount: voteCount || 0,
+    votedByMe: !!votedByMe,
   };
 }
+
+const withVoteCountPipeline = (voterId) => [
+  {
+    $lookup: {
+      from: 'votes',
+      localField: '_id',
+      foreignField: 'giftId',
+      as: 'votes',
+    },
+  },
+  {
+    $addFields: {
+      voteCount: { $size: '$votes' },
+      votedByMe: voterId ? { $in: [voterId, '$votes.voterId'] } : false,
+    },
+  },
+  { $project: { votes: 0 } },
+];
 
 // 선물 제안 목록 (투표수 내림차순)
 app.get('/api/gifts', async (req, res) => {
   const voterId = req.query.voterId || '';
-  const { rows } = await db.query(
-    `SELECT g.*,
-            (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id) AS vote_count,
-            (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id AND v.voter_id = $1) AS voted_by_me
-     FROM gifts g
-     ORDER BY vote_count DESC, g.created_at ASC`,
-    [voterId]
-  );
-  res.json(rows.map(serializeGift));
+  const { gifts } = await getCollections();
+  const docs = await gifts
+    .aggregate([...withVoteCountPipeline(voterId), { $sort: { voteCount: -1, createdAt: 1 } }])
+    .toArray();
+  res.json(docs.map((g) => serializeGift(g, g.voteCount, g.votedByMe)));
 });
 
 // 새 선물 제안 등록
@@ -49,48 +72,50 @@ app.post('/api/gifts', async (req, res) => {
   if (!proposerName || !proposerName.trim()) {
     return res.status(400).json({ error: '이름을 입력해 주세요.' });
   }
-  const { rows } = await db.query(
-    `INSERT INTO gifts (text, proposer_name, department) VALUES ($1, $2, $3) RETURNING *`,
-    [text.trim(), proposerName.trim(), (department || '').trim()]
-  );
-  res.status(201).json(serializeGift({ ...rows[0], vote_count: 0, voted_by_me: 0 }));
+
+  const { gifts } = await getCollections();
+  const doc = {
+    text: text.trim(),
+    proposerName: proposerName.trim(),
+    department: (department || '').trim(),
+    createdAt: new Date(),
+  };
+  const result = await gifts.insertOne(doc);
+  res.status(201).json(serializeGift({ _id: result.insertedId, ...doc }, 0, false));
 });
 
 // 특정 제안에 투표 / 취소 (토글)
 app.post('/api/gifts/:id/vote', async (req, res) => {
-  const giftId = Number(req.params.id);
+  const giftId = toObjectId(req.params.id);
+  if (!giftId) {
+    return res.status(404).json({ error: '존재하지 않는 제안입니다.' });
+  }
   const { voterId, voterName, voterDepartment } = req.body || {};
   if (!voterId) {
     return res.status(400).json({ error: 'voterId가 필요합니다.' });
   }
 
-  const giftCheck = await db.query('SELECT id FROM gifts WHERE id = $1', [giftId]);
-  if (giftCheck.rows.length === 0) {
+  const { gifts, votes } = await getCollections();
+  const gift = await gifts.findOne({ _id: giftId });
+  if (!gift) {
     return res.status(404).json({ error: '존재하지 않는 제안입니다.' });
   }
 
-  const existing = await db.query(
-    'SELECT id FROM votes WHERE gift_id = $1 AND voter_id = $2',
-    [giftId, voterId]
-  );
-
-  if (existing.rows.length > 0) {
-    await db.query('DELETE FROM votes WHERE id = $1', [existing.rows[0].id]);
+  const existing = await votes.findOne({ giftId, voterId });
+  if (existing) {
+    await votes.deleteOne({ _id: existing._id });
   } else {
-    await db.query(
-      `INSERT INTO votes (gift_id, voter_id, voter_name, voter_department) VALUES ($1, $2, $3, $4)`,
-      [giftId, voterId, voterName || '', voterDepartment || '']
-    );
+    await votes.insertOne({
+      giftId,
+      voterId,
+      voterName: voterName || '',
+      voterDepartment: voterDepartment || '',
+      createdAt: new Date(),
+    });
   }
 
-  const { rows } = await db.query(
-    `SELECT g.*,
-            (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id) AS vote_count,
-            (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id AND v.voter_id = $1) AS voted_by_me
-     FROM gifts g WHERE g.id = $2`,
-    [voterId, giftId]
-  );
-  res.json(serializeGift(rows[0]));
+  const voteCount = await votes.countDocuments({ giftId });
+  res.json(serializeGift(gift, voteCount, !existing));
 });
 
 // ---- 관리자 API ----
@@ -104,47 +129,45 @@ app.post('/api/admin/login', (req, res) => {
 });
 
 app.get('/api/admin/summary', requireAdmin, async (req, res) => {
-  const totalGifts = (await db.query('SELECT COUNT(*) AS c FROM gifts')).rows[0].c;
-  const totalVotes = (await db.query('SELECT COUNT(*) AS c FROM votes')).rows[0].c;
-  const uniqueParticipants = (
-    await db.query(`
-      SELECT COUNT(*) AS c FROM (
-        SELECT proposer_name AS name FROM gifts
-        UNION
-        SELECT voter_name AS name FROM votes WHERE voter_name IS NOT NULL AND voter_name != ''
-      ) t
-    `)
-  ).rows[0].c;
-  const topRows = (
-    await db.query(`
-      SELECT g.text, g.proposer_name,
-             (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id) AS vote_count
-      FROM gifts g ORDER BY vote_count DESC, g.created_at ASC LIMIT 1
-    `)
-  ).rows;
-  const top = topRows[0];
+  const { gifts, votes } = await getCollections();
+  const totalGifts = await gifts.countDocuments();
+  const totalVotes = await votes.countDocuments();
+
+  const proposerNames = await gifts.distinct('proposerName');
+  const voterNames = await votes.distinct('voterName', { voterName: { $nin: [null, ''] } });
+  const uniqueParticipants = new Set([...proposerNames, ...voterNames]).size;
+
+  const topDocs = await gifts
+    .aggregate([...withVoteCountPipeline(''), { $sort: { voteCount: -1, createdAt: 1 } }, { $limit: 1 }])
+    .toArray();
+  const top = topDocs[0];
+
   res.json({
-    totalGifts: Number(totalGifts),
-    totalVotes: Number(totalVotes),
-    uniqueParticipants: Number(uniqueParticipants),
+    totalGifts,
+    totalVotes,
+    uniqueParticipants,
     topGift: top
-      ? { text: top.text, proposerName: top.proposer_name, voteCount: Number(top.vote_count) }
+      ? { text: top.text, proposerName: top.proposerName, voteCount: top.voteCount }
       : null,
   });
 });
 
 app.delete('/api/admin/gifts/:id', requireAdmin, async (req, res) => {
-  const giftId = Number(req.params.id);
-  await db.query('DELETE FROM gifts WHERE id = $1', [giftId]);
+  const giftId = toObjectId(req.params.id);
+  if (!giftId) {
+    return res.json({ ok: true });
+  }
+  const { gifts, votes } = await getCollections();
+  await gifts.deleteOne({ _id: giftId });
+  await votes.deleteMany({ giftId });
   res.json({ ok: true });
 });
 
 app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
-  const { rows } = await db.query(`
-    SELECT g.id, g.text, g.proposer_name, g.department, g.created_at,
-           (SELECT COUNT(*) FROM votes v WHERE v.gift_id = g.id) AS vote_count
-    FROM gifts g ORDER BY vote_count DESC, g.created_at ASC
-  `);
+  const { gifts } = await getCollections();
+  const rows = await gifts
+    .aggregate([...withVoteCountPipeline(''), { $sort: { voteCount: -1, createdAt: 1 } }])
+    .toArray();
 
   const escapeCsv = (value) => {
     const s = String(value ?? '');
@@ -157,9 +180,9 @@ app.get('/api/admin/export.csv', requireAdmin, async (req, res) => {
   const header = ['순번', '선물', '제안자', '부서', '득표수', '등록일시'];
   const lines = [header.join(',')];
   rows.forEach((r, idx) => {
-    const createdAt = r.created_at instanceof Date ? r.created_at.toISOString() : r.created_at;
+    const createdAt = r.createdAt instanceof Date ? r.createdAt.toISOString() : r.createdAt;
     lines.push(
-      [idx + 1, r.text, r.proposer_name, r.department, r.vote_count, createdAt]
+      [idx + 1, r.text, r.proposerName, r.department, r.voteCount, createdAt]
         .map(escapeCsv)
         .join(',')
     );
